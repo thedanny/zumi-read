@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:17-alpine
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_DB: storysprout
+      POSTGRES_USER: storysprout
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-storysprout}
+    volumes:
+      - storysprout_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U storysprout -d storysprout"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  api:
+    build: ./server
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Database: Host=db;Port=5432;Database=storysprout;Username=storysprout;Password=${POSTGRES_PASSWORD:-storysprout}
+      GENERATION_PROVIDER: ${GENERATION_PROVIDER:-demo}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      AUTH_KEY_PATH: /app/keys
+    volumes:
+      - auth_keys:/app/keys
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  web:
+    build: ./client
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+volumes:
+  storysprout_db:
+  auth_keys:
